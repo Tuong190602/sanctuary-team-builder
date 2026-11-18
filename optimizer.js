@@ -9,6 +9,18 @@ export function validateTeam(xs){
  const c=roleCounts(xs); if(c.heal!==2||c.tank<1||c.tank>2||c.chanter<1||c.chanter>2)return false;
  return !!splitParties(xs);
 }
+// Position rules: Tank(s) split between parties, strongest Tank in Party 1.
+// Chanter, when present, is displayed in slot 4; Heal always in slot 5.
+export function orderParty(p){
+ const heal=p.find(x=>x.role==='heal');
+ const chanter=p.find(x=>x.role==='chanter');
+ const remaining=p.filter(x=>x!==heal&&x!==chanter).sort((a,b)=>{
+  const roleOrder=x=>x.role==='tank'?0:1;
+  return roleOrder(a)-roleOrder(b)||Number(b.power)-Number(a.power);
+ });
+ // If no chanter, the fourth slot is filled by the remaining DPS/other role.
+ return chanter?[...remaining,chanter,heal]:[...remaining,heal];
+}
 export function splitParties(xs){
  if(xs.length!==10)return null;
  const heal=xs.filter(x=>x.role==='heal'), tank=xs.filter(x=>x.role==='tank'), chanter=xs.filter(x=>x.role==='chanter'), dps=xs.filter(x=>x.role==='dps');
@@ -18,12 +30,17 @@ export function splitParties(xs){
  for(let mask=0;mask<1024;mask++){
   if(popcount(mask)!==5)continue;
   const p1=xs.filter((_,i)=>mask&(1<<i)),p2=xs.filter((_,i)=>!(mask&(1<<i)));
-  if(p1.filter(x=>x.role==='heal').length!==1||p2.filter(x=>x.role==='heal').length!==1||!p1.some(x=>x.role==='tank'))continue;
+  if(p1.filter(x=>x.role==='heal').length!==1||p2.filter(x=>x.role==='heal').length!==1)continue;
+  if(p1.filter(x=>x.role==='tank').length!==1)continue;
+  if(tank.length===2){
+   if(p2.filter(x=>x.role==='tank').length!==1)continue;
+   if(Number(p1.find(x=>x.role==='tank').power)<Number(p2.find(x=>x.role==='tank').power))continue;
+  }
   const d1=sum(p1.filter(x=>x.role==='dps')),d2=sum(p2.filter(x=>x.role==='dps'));
   const c1=p1.some(x=>x.role==='chanter'),c2=p2.some(x=>x.role==='chanter');
   const chanterBonus=(d1>=d2?c1:c2)?10000:0;
   const score=chanterBonus-Math.abs(d1-d2)*.5-Math.abs(sum(p1)-sum(p2))*.12;
-  if(score>bestScore){bestScore=score;best=[p1,p2];}
+  if(score>bestScore){bestScore=score;best=[orderParty(p1),orderParty(p2)];}
  }
  return best;
 }
